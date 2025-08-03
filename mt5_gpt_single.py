@@ -22,6 +22,7 @@ import pandas as pd
 import openai
 from dotenv import load_dotenv
 from utils.indicators import calculate_all_indicators, get_indicator_interpretation
+from utils.data_manager import create_data_manager, save_cycle_data
 
 # Load environment variables
 load_dotenv()
@@ -50,6 +51,10 @@ DEFAULT_TP_PIPS = 50         # default take-profit in pips
 MAX_SLIPPAGE = 10            # maximum slippage in points
 MAGIC_NUMBER = 123456        # unique identifier for bot trades
 
+# Data Storage Configuration
+ENABLE_DATA_STORAGE = os.getenv("ENABLE_DATA_STORAGE", "true").lower() == "true"
+SAVE_MARKET_DATA = os.getenv("SAVE_MARKET_DATA", "false").lower() == "true"
+
 # OpenAI Parameters
 OPENAI_MODEL = "gpt-4"
 OPENAI_TEMPERATURE = 0.0
@@ -75,6 +80,11 @@ class MT5GPTSingleBot:
         self.symbol = SYMBOL
         self.running = False
         self.openai_client = None
+        
+        # Initialize optional data storage
+        self.data_manager = create_data_manager(enabled=ENABLE_DATA_STORAGE)
+        if ENABLE_DATA_STORAGE:
+            logger.info("Data storage enabled - historical data will be saved")
         
     def initialize(self) -> bool:
         """Initialize MT5 connection and OpenAI client."""
@@ -488,12 +498,34 @@ Respond ONLY in JSON format with clear reasoning for your decision."""
                 logger.warning("Invalid trade decision, skipping execution")
                 return False
             
+            # Save cycle data (optional, non-blocking)
+            try:
+                if SAVE_MARKET_DATA:
+                    save_cycle_data(self.data_manager, self.symbol, df, indicators, prompt, gpt_response, decision)
+                else:
+                    # Save only indicators and decisions (lighter storage)
+                    timestamp = datetime.now()
+                    self.data_manager.save_indicators(self.symbol, timestamp, indicators)
+                    self.data_manager.save_gpt_decision(self.symbol, timestamp, prompt, gpt_response, decision)
+            except Exception as e:
+                logger.warning(f"Failed to save cycle data: {e}")
+                # Continue execution - don't let storage issues stop trading
+            
             # Execute trade if not hold
             if decision["action"] == "hold":
                 logger.info("GPT-4 recommends HOLD - no trade executed")
                 return True
             else:
                 success = self.execute_trade(decision)
+                
+                # Save trade execution data if successful
+                try:
+                    if success and decision["action"] in ["buy", "sell"]:
+                        execution_result = {"success": True, "action": decision["action"]}
+                        self.data_manager.save_trade_execution(self.symbol, datetime.now(), decision, execution_result)
+                except Exception as e:
+                    logger.warning(f"Failed to save trade execution data: {e}")
+                
                 return success
                 
         except Exception as e:

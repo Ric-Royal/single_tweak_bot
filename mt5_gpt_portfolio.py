@@ -22,6 +22,7 @@ import pandas as pd
 import openai
 from dotenv import load_dotenv
 from utils.indicators import calculate_all_indicators, get_indicator_interpretation
+from utils.data_manager import create_data_manager, save_cycle_data
 
 # Load environment variables
 load_dotenv()
@@ -55,6 +56,10 @@ MAGIC_NUMBER = 789012         # unique identifier for bot trades
 MAX_DAILY_TRADES = 10         # maximum trades per day
 MAX_OPEN_POSITIONS = 5        # maximum concurrent positions
 
+# Data Storage Configuration
+ENABLE_DATA_STORAGE = os.getenv("ENABLE_DATA_STORAGE", "true").lower() == "true"
+SAVE_MARKET_DATA = os.getenv("SAVE_MARKET_DATA", "false").lower() == "true"
+
 # OpenAI Parameters
 OPENAI_MODEL = "gpt-4"
 OPENAI_TEMPERATURE = 0.0
@@ -82,6 +87,11 @@ class MT5GPTPortfolioBot:
         self.openai_client = None
         self.daily_trades = 0
         self.last_trade_date = None
+        
+        # Initialize optional data storage
+        self.data_manager = create_data_manager(enabled=ENABLE_DATA_STORAGE)
+        if ENABLE_DATA_STORAGE:
+            logger.info("Portfolio data storage enabled - historical data will be saved")
         
     def initialize(self) -> bool:
         """Initialize MT5 connection and OpenAI client."""
@@ -546,6 +556,19 @@ Respond ONLY in JSON format with clear reasoning considering both technical anal
                 logger.warning("Invalid trade decision for %s, skipping", symbol)
                 return False
             
+            # Save cycle data (optional, non-blocking)
+            try:
+                if SAVE_MARKET_DATA:
+                    save_cycle_data(self.data_manager, symbol, df, indicators, prompt, gpt_response, decision)
+                else:
+                    # Save only indicators and decisions (lighter storage)
+                    timestamp = datetime.now()
+                    self.data_manager.save_indicators(symbol, timestamp, indicators)
+                    self.data_manager.save_gpt_decision(symbol, timestamp, prompt, gpt_response, decision)
+            except Exception as e:
+                logger.warning(f"Failed to save cycle data for {symbol}: {e}")
+                # Continue execution - don't let storage issues stop trading
+            
             # Execute trade if not hold and risk limits allow
             if decision["action"] == "hold":
                 logger.info("%s -> HOLD - no trade executed", symbol)
@@ -556,6 +579,15 @@ Respond ONLY in JSON format with clear reasoning considering both technical anal
                     return False
                 
                 success = self.execute_trade(symbol, decision)
+                
+                # Save trade execution data if successful
+                try:
+                    if success and decision["action"] in ["buy", "sell"]:
+                        execution_result = {"success": True, "action": decision["action"]}
+                        self.data_manager.save_trade_execution(symbol, datetime.now(), decision, execution_result)
+                except Exception as e:
+                    logger.warning(f"Failed to save trade execution data for {symbol}: {e}")
+                
                 return success
                 
         except Exception as e:
