@@ -28,9 +28,9 @@ def main():
     print("• Symbol: EURUSD")
     print("• Risk per trade: 0.15%") 
     print("• Max volume: 0.05 lots")
-    print("• Daily limits: 6 trades, -1.5% drawdown, 3 consecutive losses")
+    print("• Daily limits: 20 trades, -1.5% drawdown, 3 consecutive losses")
     print("• Time exits: 15 bars (75 minutes)")
-    print("• Sessions: London/NY overlap (10:00-17:00 UTC)")
+    print("• Sessions: 24/7 Trading (00:00-23:59 UTC)")
     print()
     
     # Check requirements

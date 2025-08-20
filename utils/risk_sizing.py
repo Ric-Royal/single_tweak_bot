@@ -22,7 +22,7 @@ class RiskBasedSizing:
                  max_volume: float = 0.05,  # Conservative until live stats justify more
                  max_daily_risk_pct: float = 1.5):  # 1.5% daily drawdown limit
         
-        self.default_risk_pct = default_risk_pct / 100.0  # Convert to decimal
+        self.default_risk_pct = default_risk_pct / 100.0  # Convert to decimal (0.30 -> 0.003)
         self.min_volume = min_volume
         self.max_volume = max_volume
         self.max_daily_risk_pct = max_daily_risk_pct / 100.0
@@ -49,33 +49,42 @@ class RiskBasedSizing:
             return None
     
     def calculate_pip_value(self, symbol: str) -> Optional[float]:
-        """Calculate pip value for the symbol."""
+        """Calculate pip value in account currency per lot per pip."""
         try:
             symbol_info = mt5.symbol_info(symbol)
             if symbol_info is None:
                 logger.error(f"Cannot get symbol info for {symbol}")
                 return None
             
-            # For 5-digit forex pairs (EURUSD = 1.08567)
-            if symbol_info.digits == 5:
-                pip_value = 10 * symbol_info.point  # 1 pip = 10 points
-            # For 3-digit JPY pairs (USDJPY = 150.123)
-            elif symbol_info.digits == 3:
-                pip_value = symbol_info.point  # 1 pip = 1 point
-            # For 4-digit pairs (some brokers)
-            elif symbol_info.digits == 4:
-                pip_value = symbol_info.point  # 1 pip = 1 point
-            # For 2-digit JPY pairs (some brokers)
-            elif symbol_info.digits == 2:
-                pip_value = symbol_info.point  # 1 pip = 1 point
-            else:
-                # Default to 5-digit calculation
-                pip_value = 10 * symbol_info.point
-                logger.warning(f"Unusual digits ({symbol_info.digits}) for {symbol}, "
-                             f"using default pip calculation")
+            # Get contract size (usually 100,000 for major pairs)
+            contract_size = symbol_info.trade_contract_size
             
-            logger.debug(f"{symbol}: digits={symbol_info.digits}, point={symbol_info.point}, "
-                        f"pip_value={pip_value}")
+            # Calculate price increment per pip
+            if symbol_info.digits == 5:
+                pip_increment = 10 * symbol_info.point  # 1 pip = 10 points (0.0001)
+            elif symbol_info.digits == 3:
+                pip_increment = symbol_info.point  # 1 pip = 1 point (0.01 for JPY)
+            elif symbol_info.digits == 4:
+                pip_increment = symbol_info.point  # 1 pip = 1 point (0.0001)
+            elif symbol_info.digits == 2:
+                pip_increment = symbol_info.point  # 1 pip = 1 point (0.01)
+            else:
+                pip_increment = 10 * symbol_info.point  # Default
+                logger.warning(f"Unusual digits ({symbol_info.digits}) for {symbol}")
+            
+            # For major pairs vs USD account currency
+            if symbol.startswith('USD'):
+                # USDXXX pairs: pip value = contract_size * pip_increment
+                pip_value = contract_size * pip_increment
+            elif symbol.endswith('USD'):
+                # XXXUSD pairs: pip value = contract_size * pip_increment
+                pip_value = contract_size * pip_increment  
+            else:
+                # Cross pairs: simplified calculation (not perfect but functional)
+                pip_value = contract_size * pip_increment
+            
+            logger.debug(f"{symbol}: contract_size={contract_size}, pip_increment={pip_increment:.6f}, "
+                        f"pip_value=${pip_value:.2f}")
             
             return pip_value
             
@@ -104,7 +113,7 @@ class RiskBasedSizing:
         if risk_pct is None:
             risk_pct = self.default_risk_pct
         else:
-            risk_pct = risk_pct / 100.0  # Convert percentage to decimal
+            risk_pct = risk_pct / 100.0  # Convert percentage to decimal (0.30 -> 0.003)
         
         try:
             # Get account info

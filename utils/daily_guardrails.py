@@ -5,7 +5,7 @@ Daily Trading Guardrails System
 Implements daily risk controls:
 - Stop after -1.5% equity drawdown
 - Stop after 3 consecutive losses  
-- Max 6 trades per day
+- Max 20 trades per day
 - Cooldown periods after losses
 """
 
@@ -24,7 +24,7 @@ class DailyGuardrails:
     def __init__(self, 
                  max_daily_drawdown_pct: float = 1.5,
                  max_consecutive_losses: int = 3,
-                 max_daily_trades: int = 6,
+                 max_daily_trades: int = 20,
                  loss_cooldown_minutes: int = 60,
                  data_file: str = "data/daily_guardrails.json"):
         

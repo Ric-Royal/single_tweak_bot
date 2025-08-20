@@ -23,9 +23,9 @@ class TradeManager:
     """Mechanical trade management with ATR-based exits."""
     
     def __init__(self,
-                 atr_sl_multiplier: float = 2.5,      # Base SL = 2.5x ATR
+                 atr_sl_multiplier: float = 3.5,      # Base SL = 3.5x ATR
                  atr_tp_ratio: float = 2.0,           # TP = 2x SL
-                 extreme_rsi_sl_multiplier: float = 3.5,  # Wider SL at RSI extremes
+                 extreme_rsi_sl_multiplier: float = 4.5,  # Wider SL at RSI extremes
                  extreme_rsi_tp_ratio: float = 1.5,   # Tighter TP at RSI extremes
                  trailing_atr_multiplier: float = 2.0, # Trail at 2x ATR
                  time_exit_bars: int = 15,            # Exit after 15 bars (75 min on M5)

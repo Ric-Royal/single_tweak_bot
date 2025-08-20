@@ -29,7 +29,7 @@ Market Data → Quality Gates → GPT Advisory → Risk Calc → Mechanical Exec
 ✅ **Protection**: Prevents blown accounts and overtrading
 - Stop after **-1.5% equity drawdown**
 - Stop after **3 consecutive losses**
-- Maximum **6 trades per day**
+- Maximum **20 trades per day**
 - **60-minute cooldown** after 2+ losses
 - Persistent state survives bot restarts
 
@@ -39,12 +39,12 @@ Market Data → Quality Gates → GPT Advisory → Risk Calc → Mechanical Exec
 - **EMA separation threshold** (0.15×ATR minimum to avoid flat crossovers)
 - **Multi-timeframe alignment** (M5 and M15 EMA trends must match)
 - **Mean-reversion conflict detection** (prevents buying at upper BB, selling at lower BB)
-- **Session filtering** (London/NY overlap 10:00-17:00 UTC)
+- **24/7 Trading** (operates 00:00-23:59 UTC across all sessions)
 - **Spread protection** (max 0.8 pips)
 
 ### **4. Mechanical Trade Management**
 ✅ **Professional**: No more hoping trades work out
-- **ATR-based SL/TP**: 2.5×ATR SL, 2×SL TP (adjusts for RSI extremes)
+- **ATR-based SL/TP**: 3.5×ATR SL, 2×SL TP (adjusts for RSI extremes)
 - **Move to breakeven** at +1R profit
 - **Partial take profit**: Close 50% at +1R
 - **ATR trailing stops**: Chandelier-style with 2×ATR distance
@@ -110,7 +110,7 @@ MAGIC_NUMBER = 123457        # Unique trade identifier
 # Daily Limits
 MAX_DAILY_DRAWDOWN = 1.5     # Stop at -1.5% equity
 MAX_CONSECUTIVE_LOSSES = 3   # Stop after 3 losses
-MAX_DAILY_TRADES = 6         # Max 6 trades/day
+MAX_DAILY_TRADES = 20        # Max 20 trades/day
 
 # Entry Quality Thresholds
 EMA_SEPARATION_FACTOR = 0.15 # Min EMA sep = 0.15×ATR
@@ -118,8 +118,10 @@ BB_CONFLICT_THRESHOLD = 0.25 # Avoid top/bottom 25% of BB
 MAX_SPREAD_PIPS = 0.8        # Max spread in pips
 
 # Trade Management
-ATR_SL_MULTIPLIER = 2.5      # SL = 2.5×ATR
+ATR_SL_MULTIPLIER = 3.5      # SL = 3.5×ATR
 ATR_TP_RATIO = 2.0           # TP = 2×SL
+BB_PERIOD = 25               # Bollinger Bands period (optimized for 1-hour trades)
+BB_STDDEV = 2.2              # Bollinger Bands standard deviation
 TIME_EXIT_BARS = 15          # Exit after 15 bars
 ```
 
@@ -222,7 +224,7 @@ Max Consecutive Losses: 2
 | **Performance Tracking** | Basic logs | Comprehensive R-multiple analysis |
 | **Multi-timeframe** | Basic M15 check | Strict M5/M15 alignment required |
 | **Mean Reversion** | None | BB conflict detection |
-| **Session Filtering** | None | London/NY overlap only |
+| **Session Filtering** | None | 24/7 operation |
 | **Spread Protection** | None | Max 0.8 pip threshold |
 | **Time Exits** | None | 15-bar maximum hold |
 
@@ -261,7 +263,7 @@ Max Consecutive Losses: 2
 
 **No trades executing:**
 - Check daily guardrails status
-- Verify session time (10:00-17:00 UTC)
+- Session identification (24/7 operation)
 - Review entry gate logs
 
 **High spread errors:**

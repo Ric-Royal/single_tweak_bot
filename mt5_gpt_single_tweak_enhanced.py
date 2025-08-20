@@ -49,15 +49,15 @@ RSI_PERIOD = 14
 FAST_MA = 6
 SLOW_MA = 13
 MACD_SIGNAL = 5
-BB_PERIOD = 20
-BB_STDDEV = 2
+BB_PERIOD = 25        # Optimized for 1-hour trades (125 min coverage)
+BB_STDDEV = 2.2       # Wider bands for hourly volatility patterns
 SMA_SLOW = 200
 EMA_FAST = 9
 EMA_SLOW = 21
 
 # Professional Trading Parameters
-RISK_PER_TRADE_PCT = 0.15     # 0.15% risk per trade
-MAX_VOLUME = 0.05             # Conservative max until live stats justify more
+RISK_PER_TRADE_PCT = 0.30     # 0.30% risk per trade for faster compounding
+MAX_VOLUME = 0.10             # Increased for proper deployment with higher risk
 MAGIC_NUMBER = 123457
 MAX_SLIPPAGE = 10
 
@@ -87,6 +87,10 @@ class EnhancedMT5TradingBot:
         self.running = False
         self.openai_client = None
         self.current_trade_id = None
+        
+        # Historical context for improved decision making
+        self.decision_history = []
+        self.max_history_length = 5  # Keep last 5 decisions
         
         # Initialize all professional systems
         self.risk_sizer = RiskBasedSizing(
@@ -216,6 +220,72 @@ class EnhancedMT5TradingBot:
             logger.error("Error computing indicators: %s", e)
             return None
     
+    def _format_decision_history(self, current_price: float) -> str:
+        """Format recent decision history with performance context."""
+        if not self.decision_history:
+            return "No recent decisions available"
+        
+        history_text = "RECENT DECISION HISTORY WITH MARKET OUTCOMES:\n"
+        for i, decision in enumerate(self.decision_history[-5:], 1):
+            timestamp = decision['timestamp']
+            action = decision['action'].upper()
+            reasoning = decision['reasoning'][:60] + "..." if len(decision['reasoning']) > 60 else decision['reasoning']
+            decision_price = decision.get('price_at_decision', 0)
+            
+            # Calculate time ago
+            time_diff = datetime.now() - datetime.fromisoformat(timestamp)
+            minutes_ago = int(time_diff.total_seconds() / 60)
+            
+            # Calculate hypothetical performance
+            if decision_price > 0:
+                if action == "SELL":
+                    pips_move = (decision_price - current_price) * 10000
+                    performance = f"({pips_move:+.1f} pips if executed)"
+                elif action == "BUY":
+                    pips_move = (current_price - decision_price) * 10000
+                    performance = f"({pips_move:+.1f} pips if executed)"
+                else:  # HOLD
+                    performance = "(no position)"
+            else:
+                performance = "(price not recorded)"
+            
+            history_text += f"• {minutes_ago}min ago: {action} at {decision_price:.5f} {performance}\n"
+            history_text += f"  Reasoning: {reasoning}\n"
+        
+        # Add performance-aware pattern analysis
+        recent_actions = [d['action'] for d in self.decision_history[-5:]]
+        sell_decisions = [d for d in self.decision_history[-5:] if d['action'] == 'sell' and d.get('price_at_decision', 0) > 0]
+        
+        if len(sell_decisions) >= 2:
+            # Calculate average performance of recent SELL signals
+            avg_performance = sum((d['price_at_decision'] - current_price) * 10000 for d in sell_decisions) / len(sell_decisions)
+            if avg_performance > 5:
+                history_text += f"\nPERFORMANCE INSIGHT: Recent SELL signals averaging +{avg_performance:.1f} pips - bearish bias was CORRECT"
+            elif avg_performance < -5:
+                history_text += f"\nPERFORMANCE INSIGHT: Recent SELL signals averaging {avg_performance:.1f} pips - bearish bias was WRONG"
+        
+        if len(set(recent_actions)) == 1 and recent_actions[0] == 'sell':
+            history_text += f"\nPATTERN: Consistent SELL bias for {len(recent_actions)} cycles - validate if trend continues"
+        elif len(recent_actions) >= 3 and recent_actions[-3:] == [recent_actions[-1]] * 3:
+            history_text += f"\nPATTERN: Repetitive {recent_actions[-1].upper()} mode - question if market has evolved"
+        
+        return history_text
+    
+    def _record_decision(self, decision: Dict, current_price: float) -> None:
+        """Record decision in history for future context."""
+        decision_record = {
+            'timestamp': datetime.now().isoformat(),
+            'action': decision['action'],
+            'reasoning': decision['reasoning'],
+            'price_at_decision': current_price
+        }
+        
+        self.decision_history.append(decision_record)
+        
+        # Keep only the last max_history_length decisions
+        if len(self.decision_history) > self.max_history_length:
+            self.decision_history = self.decision_history[-self.max_history_length:]
+    
     def create_enhanced_prompt(self, latest_price: float, indicators: Dict, m15_data: Optional[Dict] = None) -> str:
         """Create enhanced GPT-4 prompt WITHOUT volume requests."""
         
@@ -280,6 +350,8 @@ MULTI-TIMEFRAME ANALYSIS:
 • M15 Status: {m15_status}
 • Timeframe Alignment: {m15_alignment}
 
+{self._format_decision_history(latest_price)}
+
 CRITICAL REQUIREMENTS:
 1. EMA ALIGNMENT: State both M5 and M15 EMA trend direction
 2. BB ZONE: Specify exact Bollinger Band position  
@@ -312,6 +384,7 @@ ANALYSIS FRAMEWORK:
 • Multi-timeframe Alignment: M5 and M15 must agree for high-probability trades
 • Bollinger Bands: Mean reversion and volatility analysis
 • RSI/Stochastic: Momentum confirmation and extreme detection
+• Historical Context: Consider recent decision patterns and market evolution
 
 TRADE DECISION RULES:
 • STRONG BUY: EMA(9) > EMA(21) on BOTH M5 and M15, price not at upper BB extreme, RSI < 70
@@ -323,9 +396,16 @@ MEAN REVERSION PROTECTION:
 • AVOID selling when price is below lower Bollinger Band
 • At BB extremes, wait for price to return toward middle band
 
+HISTORICAL AWARENESS:
+• Review the PERFORMANCE INSIGHT to see if your recent bias was correct or wrong
+• If recent SELL signals show positive pips, the bearish bias is working - don't second-guess based on BB position alone
+• If recent signals show negative pips, reassess your approach and look for market evolution
+• Consider whether "mean reversion" conflicts are actually valid entries when the trend is strong
+• Acknowledge when repetitive patterns are working vs. when they need adjustment
+
 REQUIRED OUTPUT:
 • action: "buy", "sell", or "hold" ONLY
-• reasoning: MUST explain EMA alignment, BB position, and RSI state
+• reasoning: MUST explain EMA alignment, BB position, RSI state, and consider recent decision patterns
 
 Focus purely on trade direction. Position sizing, stops, and exits are handled by automated risk management systems."""
                     },
@@ -491,7 +571,7 @@ Focus purely on trade direction. Position sizing, stops, and exits are handled b
                 "magic": MAGIC_NUMBER,
                 "comment": f"Enhanced_{action}",
                 "type_time": mt5.ORDER_TIME_GTC,
-                "type_filling": mt5.ORDER_FILLING_IOC,
+                "type_filling": mt5.ORDER_FILLING_FOK,
             }
             
             # Execute order
@@ -504,7 +584,7 @@ Focus purely on trade direction. Position sizing, stops, and exits are handled b
             # Log successful execution
             logger.info("TRADE EXECUTED: %s %.2f lots at %.5f (SL=%.5f, TP=%.5f)", 
                        action.upper(), volume, entry_price, sl_price, tp_price)
-            logger.info("Risk: %.3f%% (${:.2f}), R:R = 1:%.1f", 
+            logger.info("Risk: %.3f%% ($%.2f), R:R = 1:%.1f", 
                        sizing_result['risk_pct'], sizing_result['risk_amount'], trade_levels['tp_ratio'])
             
             # Record trade in telemetry
@@ -583,6 +663,9 @@ Focus purely on trade direction. Position sizing, stops, and exits are handled b
             
             logger.info("Parsed decision: %s", decision)
             
+            # Record decision in history for future context
+            self._record_decision(decision, current_price)
+            
             # 9. Apply entry quality gates (if not hold)
             if decision["action"] != "hold":
                 entry_allowed, gate_reasons = self.entry_gates.evaluate_entry_quality(
@@ -634,7 +717,7 @@ Focus purely on trade direction. Position sizing, stops, and exits are handled b
         # Show initial guardrails status
         stats = self.guardrails.get_daily_stats()
         logger.info("Daily Status: %d/%d trades, %d consecutive losses", 
-                   stats.get('trades_today', 0), stats.get('max_trades', 6),
+                   stats.get('trades_today', 0), stats.get('max_trades', 20),
                    stats.get('consecutive_losses', 0))
         
         self.running = True

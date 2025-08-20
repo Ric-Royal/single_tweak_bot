@@ -26,7 +26,7 @@ class EntryQualityGates:
                  ema_separation_factor: float = 0.15,  # Require EMA sep >= 0.15 * ATR
                  bb_conflict_threshold: float = 0.25,  # Top/bottom 25% of BB channel
                  max_spread_multiplier: float = 1.5,   # Max spread = 1.5x 30min median
-                 max_spread_pips: float = 0.8):        # Absolute max spread in pips
+                 max_spread_pips: float = 20):        # Absolute max spread in pips
         
         self.ema_separation_factor = ema_separation_factor
         self.bb_conflict_threshold = bb_conflict_threshold
@@ -163,20 +163,27 @@ class EntryQualityGates:
     def check_trading_session(self) -> Tuple[bool, str]:
         """
         Check if we're in preferred trading session.
-        Trade only during London/NY overlap (10:00-17:00 UTC).
+        Now trades 24/7 (00:00-23:59 UTC) for maximum opportunity capture.
         """
         try:
             current_utc = datetime.now(timezone.utc)
             hour_utc = current_utc.hour
+            minute_utc = current_utc.minute
             
-            # London/NY overlap: 10:00-17:00 UTC (approximately)
-            session_start = 10
-            session_end = 17
-            
-            if session_start <= hour_utc < session_end:
-                return True, f"Session OK: {hour_utc:02d}:XX UTC (London/NY overlap)"
+            # 24/7 trading - always allow trading
+            # Session identification for telemetry purposes
+            if 0 <= hour_utc < 6:
+                session_name = "Asian Session"
+            elif 6 <= hour_utc < 10:
+                session_name = "London Pre-Market"
+            elif 10 <= hour_utc < 17:
+                session_name = "London/NY Overlap"
+            elif 17 <= hour_utc < 22:
+                session_name = "NY Close"
             else:
-                return False, f"Outside trading hours: {hour_utc:02d}:XX UTC (trade {session_start:02d}-{session_end:02d} UTC)"
+                session_name = "After Hours"
+            
+            return True, f"Session OK: {hour_utc:02d}:{minute_utc:02d} UTC ({session_name}) - 24/7 Trading Active"
                 
         except Exception as e:
             logger.error(f"Error checking trading session: {e}")

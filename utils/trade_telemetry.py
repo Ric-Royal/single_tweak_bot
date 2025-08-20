@@ -171,7 +171,7 @@ class TradeTelemetry:
             return 0.0
     
     def _get_current_session(self) -> str:
-        """Determine current trading session."""
+        """Determine current trading session for 24/7 operation."""
         hour_utc = datetime.now().hour
         
         if 0 <= hour_utc < 6:
@@ -182,8 +182,8 @@ class TradeTelemetry:
             return "london_ny_overlap"
         elif 17 <= hour_utc < 22:
             return "ny_close"
-        else:
-            return "off_hours"
+        else:  # 22:00-23:59
+            return "after_hours"
     
     def log_trade_entry(self,
                        symbol: str,
